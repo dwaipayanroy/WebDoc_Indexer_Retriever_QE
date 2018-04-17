@@ -1,4 +1,6 @@
 #!/bin/bash
 # Index the sample clueweb file
-./indexer-clueweb.sh src/test/sample-corpora-wt10g.spec ~dwaipayan/wt10g-sample.index
+
+./index-clueweb.sh /home/dwaipayan/Dropbox/programs/WebData/test/clueweb09-sample/clueweb-sample.spec /home/dwaipayan/cw09b-sample.index
+
 

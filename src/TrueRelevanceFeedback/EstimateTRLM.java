@@ -6,7 +6,6 @@ TODO: To add an option:
  */
 package TrueRelevanceFeedback;
 
-import static common.CommonVariables.FIELD_ID;
 import common.DocumentVector;
 import common.PerTermStat;
 import common.TRECQuery;
@@ -26,12 +25,8 @@ import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.BooleanClause;
-import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.util.BytesRef;
 
@@ -43,9 +38,17 @@ public class EstimateTRLM {
 
     IndexReader     indexReader;
     IndexSearcher   indexSearcher;
-    String          fieldForFeedback;   // the field of the index which will be used for feedback
+    String          fieldForFeedbackTRF;   // the field of the index which will be used for feedback
     Analyzer        analyzer;
-    
+
+    // for TRF
+    String          fieldToSearchTRF;      // the field in the index to be searched
+//    String          fieldForFeedbackTRF;   // field, to be used for feedback
+
+    // for PRF
+    String          fieldToSearchPRF;      // the field in the index to be searched
+    String          fieldForFeedbackPRF;   // field, to be used for feedback
+
     int             numFeedbackTerms;// number of feedback terms
     int             numFeedbackDocs; // number of feedback documents
     float           mixingLambda;    // mixing weight, used for doc-col weight adjustment
@@ -93,7 +96,8 @@ public class EstimateTRLM {
         this.indexReader = rblm.indexReader;
         this.indexSearcher = rblm.indexSearcher;
         this.analyzer = rblm.analyzer;
-        this.fieldForFeedback = rblm.fieldForFeedback;
+        this.fieldForFeedbackTRF = rblm.fieldForFeedbackTRF;
+        this.fieldForFeedbackPRF = rblm.fieldForFeedbackPRF;
         this.numFeedbackDocs = rblm.numFeedbackDocs;
         this.numFeedbackTerms = rblm.numFeedbackTerms;
         this.mixingLambda = rblm.mixingLambda;
@@ -114,7 +118,7 @@ public class EstimateTRLM {
      * @param trf true if True RF, false otherwise
      * @throws IOException 
      */
-    public void setFeedbackStats(TopDocs topDocs, String[] analyzedQuery, DivergenceTrfPrf rblm, Boolean trf) throws IOException {
+    public void setFeedbackStats(TopDocs topDocs, String[] analyzedQuery, DivergenceTrfPrf rblm, Boolean trf, String field) throws IOException {
 
         feedbackDocumentVectors = new HashMap<>();
         feedbackTermStats = new HashMap<>();
@@ -129,7 +133,8 @@ public class EstimateTRLM {
         rblm.termsMeta = new HashMap<>();
 
         int feedbackDocs = Math.min(numFeedbackDocs, hits_length);
-        String feedbackField = (trf)? "content" : rblm.fieldForFeedback;
+//        String feedbackField = (trf)? "content" : rblm.fieldForFeedbackTRF;
+        String feedbackField = field;
 
         for (int i = 0; i < feedbackDocs; i++) {
             // for each feedback document
@@ -182,7 +187,7 @@ public class EstimateTRLM {
             // - meta
 
             // + content
-            terms = indexReader.getTermVector(luceneDocId, "content");
+            terms = indexReader.getTermVector(luceneDocId, feedbackField);
             if(null == terms) {
                 System.err.println("Error: Term vectors for content not indexed: "+luceneDocId);
                 System.exit(1);
@@ -208,7 +213,7 @@ public class EstimateTRLM {
 
             float p_Q_GivenD = 1;
             for (String qTerm : analyzedQuery)
-                p_Q_GivenD *= return_Smoothed_MLE(qTerm, docV);
+                p_Q_GivenD *= return_Smoothed_MLE(qTerm, docV, field);
             if(null == hash_P_Q_Given_D.get(luceneDocId))
                 hash_P_Q_Given_D.put(luceneDocId, p_Q_GivenD);
             else {
@@ -225,7 +230,7 @@ public class EstimateTRLM {
      * @param dv The document vector under consideration
      * @return MLE of t in a document dv, smoothed with collection statistics
      */
-    public float return_Smoothed_MLE(String t, DocumentVector dv) throws IOException {
+    public float return_Smoothed_MLE(String t, DocumentVector dv, String field) throws IOException {
 
         float smoothedMLEofTerm = 1;
         PerTermStat docPTS;
@@ -240,22 +245,22 @@ public class EstimateTRLM {
             smoothedMLEofTerm = 
                 ((docPTS!=null)?(mixingLambda * (float)docPTS.getCF() / (float)dv.getDocSize()):(0)) +
 //                ((feedbackTermStats.get(t)!=null)?((1.0f-mixingLambda)*(float)feedbackTermStats.get(t).getCF()/(float)vocSize):0);
-            (1.0f-mixingLambda)*(getCollectionProbability(t, indexReader, fieldForFeedback));
+            (1.0f-mixingLambda)*(getCollectionProbability(t, indexReader, field));
         }
         return smoothedMLEofTerm;
     } // ends return_Smoothed_MLE()
 
     /**
-     * Returns the vocabulary size of the collection for 'fieldForFeedback'.
+     * Returns the vocabulary size of the collection for 'fieldForFeedbackTRF'.
      * @return vocSize Total number of terms in the vocabulary
      * @throws IOException IOException
      */
     private long getVocabularySize() throws IOException {
 
         Fields fields = MultiFields.getFields(indexReader);
-        Terms terms = fields.terms(fieldForFeedback);
+        Terms terms = fields.terms(fieldForFeedbackTRF);
         if(null == terms) {
-            System.err.println("Field: "+fieldForFeedback);
+            System.err.println("Field: "+fieldForFeedbackTRF);
             System.err.println("Error buildCollectionStat(): terms Null found");
         }
         vocSize = terms.getSumTotalTermFreq();  // total number of terms in the index in that field
@@ -299,7 +304,7 @@ public class EstimateTRLM {
      * @throws Exception 
      */
     ///*
-    public HashMap RM1(TRECQuery query, TopDocs topDocs) throws Exception {
+    public HashMap RM1(TRECQuery query, TopDocs topDocs, String field) throws Exception {
 
         float p_W_GivenR_one_doc;
 
@@ -319,7 +324,7 @@ public class EstimateTRLM {
             // for each doc in RF-set
                 int luceneDocId = docEntrySet.getKey();
                 p_W_GivenR_one_doc += 
-                    return_Smoothed_MLE(t, feedbackDocumentVectors.get(luceneDocId)) *
+                    return_Smoothed_MLE(t, feedbackDocumentVectors.get(luceneDocId),field) *
                     hash_P_Q_Given_D.get(luceneDocId);
             }
             list_PwGivenR.add(new WordProbability(t, p_W_GivenR_one_doc));
@@ -353,11 +358,11 @@ public class EstimateTRLM {
      * @return hashmap_PwGivenR: containing numFeedbackTerms expansion terms with normalized weights
      * @throws Exception 
      */
-    public HashMap RM3(TRECQuery query, TopDocs topDocs) throws Exception {
+    public HashMap RM3(TRECQuery query, TopDocs topDocs, String field) throws Exception {
 
         hashmap_PwGivenR = new LinkedHashMap<>();
 
-        hashmap_PwGivenR = RM1(query, topDocs);
+        hashmap_PwGivenR = RM1(query, topDocs, field);
         // hashmap_PwGivenR has all terms of PRDs along with their probabilities 
 
         /*
@@ -431,112 +436,22 @@ public class EstimateTRLM {
         return hashmap_PwGivenR;
     } // end RM3()
 
-    /**
-     * Returns the expanded query in BooleanQuery form with P(w|R) as 
-     * corresponding weights for the expanded terms
-     * @param expandedQuery The expanded query
-     * @param query The query
-     * @return BooleanQuery to be used for consequent re-retrieval
-     * @throws Exception 
-     */
-    public BooleanQuery getExpandedQuery(HashMap<String, WordProbability> expandedQuery, TRECQuery query) throws Exception {
-
-        BooleanQuery booleanQuery = new BooleanQuery();
-        
-        for (Map.Entry<String, WordProbability> entrySet : expandedQuery.entrySet()) {
-            String key = entrySet.getKey();
-            if(key.contains(":"))
-                continue;
-            WordProbability wProba = entrySet.getValue();
-            float value = wProba.p_w_given_R;
-
-            Term t = new Term(rblm.fieldToSearch, key);
-            Query tq = new TermQuery(t);
-            tq.setBoost(value);
-            BooleanQuery.setMaxClauseCount(4096);
-            booleanQuery.add(tq, BooleanClause.Occur.SHOULD);
-        }
-
-        return booleanQuery;
-    } // ends getExpandedQuery()
-
-    /**
-     * Rerank the result depending on the KL-Divergence between the estimated relevance model 
-     *  and individual document model.
-     * @param hashmap_topM_PwGivenR Top M terms with highest P(w|R)
-     * @param query The raw query (unanalyzed)
-     * @param topDocs Initial retrieved documents
-     * @throws Exception 
-     */
-    public List<NewScore> rerankUsingRBLM(HashMap<String, WordProbability> hashmap_topM_PwGivenR, 
-        TRECQuery query, TopDocs topDocs) throws Exception {
-
-        List<NewScore> finalList = new ArrayList<>();
-        ScoreDoc[] hits;
-
-        int hits_length;
-        String w;
-
-        PerTermStat ptsFromDocument;
-
-        hits = topDocs.scoreDocs;
-        hits_length = hits.length;               // number of documents retrieved in the first retrieval
-
-        double score;
-        double preComputed_p_w_R;
-        double singleTerm_p_w_d;
-
-        for (int i = 0; i < hits_length; i++) {
-            int luceneDocId = hits[i].doc;
-            Document d = indexSearcher.doc(luceneDocId);
-            DocumentVector dv = new DocumentVector();
-            dv = dv.getDocumentVector(luceneDocId, indexReader);
-
-            score = 0;
-
-            for (Map.Entry<String, WordProbability> entrySet : hashmap_topM_PwGivenR.entrySet()) {
-            // for each of the words in top numFeedbackTerms terms in R
-                w = entrySet.getKey();
-                ptsFromDocument     = dv.docPerTermStat.get(w);
-//                ptsFromCollection   = collStat.perTermStat.get(w);
-                preComputed_p_w_R = entrySet.getValue().p_w_given_R;
-
-                singleTerm_p_w_d = ( ((ptsFromDocument!=null)?(mixingLambda * (double)ptsFromDocument.getCF() / (double)dv.getDocSize()):(0.0))// );
-                    + (1.0f-mixingLambda)*(getCollectionProbability(w, indexReader, fieldForFeedback)));
-//                     + ((ptsFromCollection!=null)?((1-mixingLambda)*(double)ptsFromCollection.getCF() / (double)vocSize):(0.0)) );
-                score +=  (preComputed_p_w_R * (double)Math.log(preComputed_p_w_R/singleTerm_p_w_d));
-
-            } // ends for each t in top numFeedbackTerms terms in R
-
-            finalList.add(new NewScore(score, d.get(FIELD_ID)));
-        } //ends for each initially retrieved documents
-
-        Collections.sort(finalList, new Comparator<NewScore>(){
-            @Override
-            public int compare(NewScore t, NewScore t1) {
-                return t.score>t1.score?1:t.score==t1.score?0:-1;
-            }
-        });
-
-        return finalList;
-    }
-
-    private static HashMap sortByValues(HashMap map) {
-        List<Map.Entry<String, WordProbability>> list = new ArrayList(map.entrySet());
-        // Defined Custom Comparator here
-        Collections.sort(list, new Comparator<Map.Entry<String, WordProbability>>() {
-            @Override
-            public int compare(Map.Entry<String, WordProbability> t1, Map.Entry<String, WordProbability> t2) {
-                return t1.getValue().p_w_given_R<t2.getValue().p_w_given_R?1:t1.getValue().p_w_given_R==t2.getValue().p_w_given_R?0:-1;
-            }
-        });
-
-        // Copying the sorted list in HashMap
-        // using LinkedHashMap to preserve the insertion order
-        HashMap sortedHashMap = new LinkedHashMap();
-        for (Map.Entry entry : list) {
-            sortedHashMap.put(entry.getKey(), entry.getValue());
-        }
-        return sortedHashMap;
-    }
+//    private static HashMap sortByValues(HashMap map) {
+//        List<Map.Entry<String, WordProbability>> list = new ArrayList(map.entrySet());
+//        // Defined Custom Comparator here
+//        Collections.sort(list, new Comparator<Map.Entry<String, WordProbability>>() {
+//            @Override
+//            public int compare(Map.Entry<String, WordProbability> t1, Map.Entry<String, WordProbability> t2) {
+//                return t1.getValue().p_w_given_R<t2.getValue().p_w_given_R?1:t1.getValue().p_w_given_R==t2.getValue().p_w_given_R?0:-1;
+//            }
+//        });
+//
+//        // Copying the sorted list in HashMap
+//        // using LinkedHashMap to preserve the insertion order
+//        HashMap sortedHashMap = new LinkedHashMap();
+//        for (Map.Entry entry : list) {
+//            sortedHashMap.put(entry.getKey(), entry.getValue());
+//        }
+//        return sortedHashMap;
+//    }
 }

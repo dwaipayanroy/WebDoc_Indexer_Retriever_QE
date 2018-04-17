@@ -3,22 +3,17 @@
 
 cd ../
 
-# readlink (for getting the absolute path) must be installed
-
-homepath=`eval echo ~$USER`
-stopFilePath="$homepath/smart-stopwords"
-if [ ! -f $stopFilePath ]
-then
-    echo "Please ensure that the path of the stopword-list-file is set in the .sh file."
-else
-    echo "Using stopFilePath="$stopFilePath
-fi
-
+stopFilePath="/home/dwaipayan/smart-stopwords"
 #toStore="NO" # YES/NO
 toStore="YES" # YES/NO
 storeTermVector="YES"
-echo "Storing the content in index: "$toStore
-echo "Storing the term-vectors: "$storeTermVector
+toRefine="false"
+# bulkFileReadSize="10"
+echo "Using stopFilePath="$stopFilePath
+echo "Using toStore="$toStore
+echo "Using storeTermVector="$storeTermVector
+echo "Refining by dropping <html-tags> and urls="$toRefine
+
 
 if [ $# -le 1 ] 
 then
@@ -29,8 +24,13 @@ then
     exit 1;
 fi
 
-prop_name="build/classes/webdoc-indexer.properties"
+
+prop_name="build/classes/trec-index.properties"
 spec_path=`readlink -f $1`		# absolute address of the .properties file
+
+
+echo "Continue - Press any key? (Ctrl-C to quit)"
+#sleep 3     # wait for 5 second before continuing
 
 if [ ! -f $spec_path ]
 then
@@ -44,13 +44,15 @@ cat > $prop_name << EOL
 
 collSpec=$spec_path
 
-indexPath=$index_path
+indexPath=$2
 
 toStore=$toStore
 
 storeTermVector=$storeTermVector
 
 stopFilePath=$stopFilePath
+
+toRefine=$toRefine
 
 EOL
 
@@ -62,7 +64,9 @@ EOL
 fi
 # .properties file created in 'build/classes' 
 
-java -cp $CLASSPATH:dist/WebData.jar:./lib/* indexer.WebDocIndexer $prop_name
+echo $prop_name
+
+java -cp dist/WebData.jar indexer.TrecDocIndexer $prop_name
 
 cp $prop_name $index_path/.
 

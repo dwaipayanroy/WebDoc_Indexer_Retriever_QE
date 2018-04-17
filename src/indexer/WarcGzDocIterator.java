@@ -133,7 +133,8 @@ public class WarcGzDocIterator extends DocumentProcessor implements Iterator<Doc
 
             if (!doc_no.isEmpty()){
             // a document content is read; need to process the Document.
-                doc = processDocument();
+//                doc = processDocument();
+                doc = processDocumentUsingJSoup();
 
                 /*
                 if(null != dumpPath) {

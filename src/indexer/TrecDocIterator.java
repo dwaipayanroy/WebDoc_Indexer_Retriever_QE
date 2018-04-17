@@ -45,6 +45,14 @@ public class TrecDocIterator extends DocumentProcessor implements Iterator<Docum
         this.analyzer = obj.analyzer;
     }
 
+    public TrecDocIterator(Analyzer analyzer, String toStore, String dumpPath, Properties prop) throws FileNotFoundException{
+        this.analyzer = analyzer;
+        this.toStore = toStore;
+        this.dumpPath = dumpPath;
+        this.storeTermVector = "YES";   // default
+        toRefine = Boolean.parseBoolean(prop.getProperty("toIndexRefinedContent", "true"));
+    }
+
     public TrecDocIterator(File file, Analyzer analyzer, Properties prop) throws FileNotFoundException, IOException {
         docReader = new BufferedReader(new FileReader(file));
         this.analyzer = analyzer;
@@ -86,6 +94,15 @@ public class TrecDocIterator extends DocumentProcessor implements Iterator<Docum
         this.analyzer = analyzer;
         this.toStore = toStore;
         this.dumpPath = dumpPath;
+    }
+
+    /**
+     * Sets the BufferedReader to read individual files.
+     * @param file 
+     */
+    public void setFileToRead(File file) throws FileNotFoundException {
+        docReader = new BufferedReader(new FileReader(file));
+        at_eof = false;
     }
 
     @Override
@@ -149,11 +166,13 @@ public class TrecDocIterator extends DocumentProcessor implements Iterator<Docum
                 rawDocSb.append(line).append(" ");
             } // ends while; a document is read.
 
-            doc = processDocument();
-
-            if (!doc_no.isEmpty()){
-            // a document content is read; need to processDocument.
-                doc = processDocument();
+            if (doc_no == null || doc_no.isEmpty()){
+                doc = null;
+            }
+            else {
+//            if (doc_no != null && !doc_no.isEmpty()){
+            // a document content is read; need to processTRECDocument.
+                doc = processTRECDocument();
 
                 if(null != dumpPath) {
 
@@ -163,8 +182,6 @@ public class TrecDocIterator extends DocumentProcessor implements Iterator<Docum
                     bw.close();
                 }
             }
-            else
-                doc = null;
         } catch (IOException e) {
             doc = null;
         }

@@ -157,4 +157,122 @@ public class DocumentProcessor {
 
         return doc;
     } // ends processDocument()
+
+    /**
+     * Analyzes the text and sets the fields of Lucene Document
+     * @return Lucene document to be indexed
+     * @throws IOException 
+     */
+    protected Document processTRECDocument() throws IOException {
+
+        Document doc = new Document();
+
+        // Field: FIELD_ID
+        // The TREC-ID of the document.
+        doc.add(new StringField(FIELD_ID, doc_no, Field.Store.YES));
+
+        String fullText = rawDocSb.toString();
+        fullText = refineSpecialChars(fullText);
+        String fullContent = analyzeText(analyzer, fullText, FIELD_FULL_BOW).toString();
+
+        // Field: FIELD_FULL_BOW
+        // Full analyzed content (with tags, urls). 
+        // Will be used for baseline retrieval.
+        if(false) // if to index the full content
+            doc.add(new Field(FIELD_FULL_BOW, fullContent, 
+                Field.Store.valueOf(toStore), Field.Index.ANALYZED, Field.TermVector.valueOf(storeTermVector)));
+
+        // if to index the clean content:
+        {
+            String cleanText = rawDocSb.toString();
+
+            cleanText = filterWebText(cleanText);
+
+            cleanContent = analyzeText(analyzer, cleanText, FIELD_BOW).toString();
+
+            // Field: FIELD_BOW
+            // Clean analyzed content (without tag, urls).
+            // Will be used for Relevance Feedback.
+            doc.add(new Field(FIELD_BOW, cleanContent, 
+                Field.Store.valueOf(toStore), Field.Index.ANALYZED, Field.TermVector.valueOf(storeTermVector)));
+
+        }
+
+        return doc;
+    } // ends processDocument()
+
+    /**
+     * Returns only the tag, meta-content of a document.
+     * @param htmlText
+     * @return Tag and meta-content
+     */
+    public static String getTagMetaContent(String htmlText) {
+        String meta;
+//        Document doc = Jsoup.parse(htmlText, "", Parser.xmlParser());
+        org.jsoup.nodes.Document jsoupDoc = org.jsoup.Jsoup.parse(htmlText, "", org.jsoup.parser.Parser.xmlParser());
+
+        for (org.jsoup.nodes.Element el : jsoupDoc.select("*")){
+            if (!el.ownText().isEmpty()){
+                for (org.jsoup.nodes.TextNode node : el.textNodes())
+                    node.remove();
+            }
+        }
+
+        System.out.println(jsoupDoc);
+        meta = jsoupDoc.text();
+        return meta;
+    }
+
+    /**
+     * Analyze the documents using JSoup
+     * @return
+     * @throws IOException 
+     */
+    protected Document processDocumentUsingJSoup() throws IOException {
+
+        Document doc = new Document();
+
+        // Field: FIELD_ID
+        // The TREC-ID of the document.
+        doc.add(new StringField(FIELD_ID, doc_no, Field.Store.YES));
+
+        String fullText = rawDocSb.toString();
+        fullText = refineSpecialChars(fullText);
+        String fullContent = analyzeText(analyzer, fullText, FIELD_FULL_BOW).toString();
+        // Field: FIELD_FULL_BOW
+        // Full analyzed content (with tags, urls). 
+        // Will be used for baseline retrieval.
+        doc.add(new Field(FIELD_FULL_BOW, fullContent, 
+            Field.Store.valueOf(toStore), Field.Index.ANALYZED, Field.TermVector.valueOf(storeTermVector)));
+
+        // if to index the clean content:
+        {
+            String cleanText = rawDocSb.toString();
+            org.jsoup.nodes.Document jsoupDoc;
+            jsoupDoc = org.jsoup.Jsoup.parse(cleanText, "UTF-8");
+
+            // metaContent = getTagMetaContent(cleanText);
+            cleanText = jsoupDoc.text();
+
+            cleanContent = analyzeText(analyzer, cleanText, FIELD_BOW).toString();
+
+            // Field: FIELD_BOW
+            // Clean analyzed content (without tag, urls).
+            // Will be used for Relevance Feedback.
+            doc.add(new Field(FIELD_BOW, cleanContent, 
+                Field.Store.valueOf(toStore), Field.Index.ANALYZED, Field.TermVector.valueOf(storeTermVector)));
+
+            // TODO: Uncomment, to index the meta content that are removed due to noise removal
+            /*
+            // Field: FIELD_META
+            // the noises that were removed from full to get the clean content
+            String analyzedMetaText = analyzeText(analyzer, metaContent, FIELD_META).toString();
+            doc.add(new Field(FIELD_META, analyzedMetaText, 
+                Field.Store.valueOf(toStore), Field.Index.ANALYZED, Field.TermVector.valueOf(storeTermVector)));
+            //*/
+        }
+
+        return doc;
+    } // ends processDocumentUsingJSoup()
+
 }

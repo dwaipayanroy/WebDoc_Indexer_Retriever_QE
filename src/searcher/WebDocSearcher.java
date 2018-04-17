@@ -23,14 +23,28 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopScoreDocCollector;
+import org.apache.lucene.search.similarities.AfterEffect;
 import org.apache.lucene.search.similarities.AfterEffectB;
+import org.apache.lucene.search.similarities.AfterEffectL;
 import org.apache.lucene.search.similarities.BM25Similarity;
+import org.apache.lucene.search.similarities.BasicModel;
+import org.apache.lucene.search.similarities.BasicModelBE;
+import org.apache.lucene.search.similarities.BasicModelD;
+import org.apache.lucene.search.similarities.BasicModelG;
 import org.apache.lucene.search.similarities.BasicModelIF;
+import org.apache.lucene.search.similarities.BasicModelIn;
+import org.apache.lucene.search.similarities.BasicModelIne;
+import org.apache.lucene.search.similarities.BasicModelP;
 import org.apache.lucene.search.similarities.DFRSimilarity;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.similarities.LMDirichletSimilarity;
 import org.apache.lucene.search.similarities.LMJelinekMercerSimilarity;
+import org.apache.lucene.search.similarities.Normalization;
+import org.apache.lucene.search.similarities.Normalization.NoNormalization;
+import org.apache.lucene.search.similarities.NormalizationH1;
 import org.apache.lucene.search.similarities.NormalizationH2;
+import org.apache.lucene.search.similarities.NormalizationH3;
+import org.apache.lucene.search.similarities.NormalizationZ;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 
@@ -63,7 +77,7 @@ public class WebDocSearcher {
     TRECQueryParser trecQueryparser;
     String          fieldToSearch;
     int             simFuncChoice;
-    float           param1, param2;
+    float           param1, param2, param3;
 
     public WebDocSearcher(String propPath) throws IOException, Exception {
 
@@ -119,12 +133,14 @@ public class WebDocSearcher {
             param1 = Float.parseFloat(prop.getProperty("param1"));
         if (null != prop.getProperty("param2"))
             param2 = Float.parseFloat(prop.getProperty("param2"));
+        if (null != prop.getProperty("param3"))
+            param3 = Float.parseFloat(prop.getProperty("param3"));
 
         /* setting indexReader and indexSearcher */
         indexReader = DirectoryReader.open(FSDirectory.open(indexFile.toPath()));
 
         indexSearcher = new IndexSearcher(indexReader);
-        setSimilarityFunction(simFuncChoice, param1, param2);
+        setSimilarityFunction(simFuncChoice, param1, param2, param3);
 
         setRunName_ResFileName();
 
@@ -139,7 +155,7 @@ public class WebDocSearcher {
         numHits = Integer.parseInt(prop.getProperty("numHits", "1000"));
     }
 
-    private void setSimilarityFunction(int choice, float param1, float param2) {
+    private void setSimilarityFunction(int choice, float param1, float param2, float param3) {
 
         switch(choice) {
             case 0:
@@ -162,7 +178,69 @@ public class WebDocSearcher {
                     + " with parameter: " + param1);
                 break;
             case 4:
-                indexSearcher.setSimilarity(new DFRSimilarity(new BasicModelIF(), new AfterEffectB(), new NormalizationH2()));
+//                indexSearcher.setSimilarity(new DFRSimilarity(new BasicModelIF(), new AfterEffectB(), new NormalizationH2()));
+                BasicModel bm;
+                AfterEffect ae;
+                Normalization nor;
+                switch((int)param1){
+                    case 1:
+                        bm = new BasicModelBE();
+                        break;
+                    case 2:
+                        bm = new BasicModelD();
+                        break;
+                    case 3:
+                        bm = new BasicModelG();
+                        break;
+                    case 4:
+                        bm = new BasicModelIF();
+                        break;
+                    case 5:
+                        bm = new BasicModelIn();
+                        break;
+                    case 6:
+                        bm = new BasicModelIne();
+                        break;
+                    case 7:
+                        bm = new BasicModelP();
+                        break;
+                    default:
+                        bm = new BasicModelIF();
+                        break;
+                }
+                switch ((int)param2){
+                    case 1:
+                        ae = new AfterEffectB();
+                        break;
+                    case 2:
+                        ae = new AfterEffectL();
+                        break;
+                    default:
+                        ae = new AfterEffectB();
+                        break;
+                }
+                switch ((int)param3) {
+                    case 1:
+                        nor = new NormalizationH1();
+                        break;
+                    case 2:
+                        nor = new NormalizationH2();
+                        break;
+                    case 3:
+                        nor = new NormalizationH3();
+                        break;
+                    case 4:
+                        nor = new NormalizationZ();
+                        break;
+                    case 5:
+                        nor = new NoNormalization();
+                        break;
+                    default:
+                        nor = new NormalizationH2();
+                        break;
+                }
+//                bm = new BasicModelIF();
+                indexSearcher.setSimilarity(new DFRSimilarity(bm, ae, nor));
                 System.out.println("Similarity function set to DFRSimilarity with default parameters");
                 break;
         }
@@ -249,9 +327,9 @@ public class WebDocSearcher {
             + "6. param1: \n"
             + "7. [param2]: optional if using BM25";
 
-        /* // uncomment this if wants to run from inside Netbeans IDE
+//        /* // uncomment this if wants to run from inside Netbeans IDE
         args = new String[1];
-        args[0] = "wt10g-full-indexSearcher.properties";
+        args[0] = "searcher.properties";
         //*/
 
         if(0 == args.length) {

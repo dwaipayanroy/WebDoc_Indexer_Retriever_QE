@@ -331,6 +331,38 @@ public class CommonMethods {
         return tokenizedContentBuff;
     }
 
+    /**
+     * Analyzes 'text', using 'analyzer', to be stored in a  dummy field.
+     * @param analyzer
+     * @param text
+     * @return
+     * @throws IOException 
+     */
+    public static StringBuffer analyzeText(Analyzer analyzer, String text) throws IOException {
+
+        StringBuffer temp;
+        Matcher m;
+        StringBuffer tokenizedContentBuff;
+        TokenStream stream;
+        CharTermAttribute termAtt;
+
+        tokenizedContentBuff = new StringBuffer();
+
+        stream = analyzer.tokenStream("dummy_field", new StringReader(text));
+        termAtt = stream.addAttribute(CharTermAttribute.class);
+        stream.reset();
+
+        while (stream.incrementToken()) {
+            String term = termAtt.toString();
+            tokenizedContentBuff.append(term).append(" ");
+        }
+
+        stream.end();
+        stream.close();
+
+        return tokenizedContentBuff;
+    }
+
     // for unit testing
     public static void main(String[] args) throws IOException {
 

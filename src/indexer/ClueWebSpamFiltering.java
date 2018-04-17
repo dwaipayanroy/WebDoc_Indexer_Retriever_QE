@@ -122,7 +122,7 @@ public class ClueWebSpamFiltering {
             Document d = spamScoreIndexSearcher.doc(hits[0].doc);
             spamScore = Float.parseFloat(d.get(FIELD_SPAMSCORE));
 
-            if (spamScore > spamScoreThreshold)
+            if (spamScore >= spamScoreThreshold)
                 spamStatus = false;
             else
                 System.err.println("Ignoring " + docid + " as spam with score: " + spamScore);

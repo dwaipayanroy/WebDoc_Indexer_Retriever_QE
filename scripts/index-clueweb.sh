@@ -14,7 +14,7 @@
 cd ../
 
 homepath=`eval echo ~$USER`
-stopFilePath="$homepath/smart-stopword"
+stopFilePath="$homepath/smart-stopwords"
 if [ ! -f $stopFilePath ]
 then
     echo "Please ensure that the path of the stopword-list-file is set in the .sh file."
@@ -22,8 +22,8 @@ else
     echo "Using stopFilePath="$stopFilePath
 fi
 
-toStore="NO" # YES/NO
-#toStore="YES" # YES/NO
+#toStore="NO" # YES/NO
+toStore="YES" # YES/NO
 storeTermVector="YES"
 echo "Storing the content in index: "$toStore
 echo "Storing the term-vectors: "$storeTermVector
@@ -42,6 +42,7 @@ fi
 prop_name="build/classes/clueweb-indexer"$#".properties"
 spec_path=`readlink -f $1`		# absolute address of the .spec file
 
+echo "Spec: "$spec_path" : "$1
 
 if [ ! -f $spec_path ]
 then
@@ -65,14 +66,19 @@ stopFilePath=$stopFilePath
 
 EOL
 
-if [ $# -eq 3 ]
+if [ $# -ge 3 ]
 then
+    if [ $# -eq 4 ]
+    then
+        spamScoreThreshold=$4
+    fi
     cat >> $prop_name << EOL
-spamScoreIndexPath=$3
+    spamScoreIndexPath=$3
 
-spamScoreThreshold=69
+    spamScoreThreshold=$spamScoreThreshold
 
 EOL
+
 fi
 
 # .properties file created in 'build/classes' 
@@ -82,4 +88,3 @@ java -cp $CLASSPATH:dist/WebData.jar:./lib/* indexer.ClueWebIndexer $prop_name
 cp $prop_name $index_path/.
 
 echo "The .properties file is saved in the index directory: "$index_path/
-

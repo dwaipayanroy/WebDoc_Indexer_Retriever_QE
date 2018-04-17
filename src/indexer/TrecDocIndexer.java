@@ -1,5 +1,6 @@
 /**
- * ClueWebIndexer.java .
+ * Incomplete.
+ * WebDocIndexer.java
  * It indexes:
  *      1 - content (only the text part, excluding tags) FOR FEEDBACK
  *      2 - fullContent of the document (including tags) FOR 1st level Retrieval
@@ -24,18 +25,33 @@ import org.apache.lucene.store.FSDirectory;
 import static common.CommonVariables.FIELD_ID;
 import common.EnglishAnalyzerWithSmartStopword;
 import common.WebDocAnalyzer;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
+import org.apache.commons.io.FileUtils;
 
 /**
  *
  * @author dwaipayan
  */
-public class ClueWebIndexer {
+public class TrecDocIndexer {
     
     String      propPath;
     Properties  prop;               // prop of the init.properties file
 
     String      collPath;           // path of the collection
     String      collSpecPath;       // path of the collection spec file
+
+    // for indexing from tar archive
+    boolean     boolIndexFromTar;   // boolean flag to indicate whether to index from tar (True), or not (False)
+    String      collTarPath;
+    File        tarFile;            // the tar file
+    String      tempDestPath;       // temporary destiantion path to extract the files from the tar archive
+    File        tempDestFile;       // temporary destination file
 
     File        collDir;            // collection Directory
     File        indexFile;          // place where the index will be stored
@@ -53,18 +69,14 @@ public class ClueWebIndexer {
     String      dumpPath;           // path of the file in which the dumping to be done
     boolean     boolToDump;
 
-    WarcGzDocIterator docs;
-    // +++ spam filtering
-    String          spamScoreIndexPath;
-    float           spamScoreThreshold;
-    // ---
+    TrecDocIterator docs;
 
     /**
      * 
      * @param propPath
      * @throws Exception 
      */
-    private ClueWebIndexer(String propPath) throws Exception {
+    private TrecDocIndexer(String propPath) throws Exception {
 
         this.propPath = propPath;
         prop = new Properties();
@@ -157,30 +169,20 @@ public class ClueWebIndexer {
             storeTermVector = "YES";
         // --- toStore or not
 
-        /*
         dumpPath = null;
         if(prop.containsKey("dumpPath")) {
             boolDumpIndex = true;
             dumpPath = prop.getProperty("dumpPath");
         }
-        //*/
 
-        // +++ spam filtering
-        if(prop.containsKey("spamScoreIndexPath")) {
-            spamScoreIndexPath = prop.getProperty("spamScoreIndexPath");
-            spamScoreThreshold = Float.parseFloat(prop.getProperty("spamScoreThreshold", "70"));
-            docs = new WarcGzDocIterator(analyzer, toStore, spamScoreIndexPath, spamScoreThreshold);
-        }
-        else
-            docs = new WarcGzDocIterator(analyzer, toStore);
-        // --- spam filtering
+        docs = new TrecDocIterator(analyzer, this.toStore, this.dumpPath, prop);
     }
 
     /**
-     * Process the warc.gz file.
-     * @param File warc.gz file 
+     * Process TREC News documents, with less or none html tags.
+     * @param file 
      */
-    private void processWarcGzFile(File file) {
+    private void processTrecFile(File file) {
 
         try {
 
@@ -190,14 +192,8 @@ public class ClueWebIndexer {
             while (docs.hasNext()) {
                 doc = docs.next();
                 if (doc != null) {
-                    if(doc.getField(FIELD_ID) == null) {
-                        System.err.println("Read NULL for doc.FIELD_ID");
-                        char ch = (char) System.in.read();
-                    }
-                    else {
-                        System.out.println((++docIndexedCounter)+": Indexing doc: " + doc.getField(FIELD_ID).stringValue());
-                        indexWriter.addDocument(doc);
-                    }
+                    System.out.println((++docIndexedCounter)+": Indexing doc: " + doc.getField(FIELD_ID).stringValue());
+                    indexWriter.addDocument(doc);
                 }
             }
         } catch (FileNotFoundException ex) {
@@ -222,7 +218,7 @@ public class ClueWebIndexer {
                 processDirectory(file);  // recurse
             }
             else {
-                processWarcGzFile(file);
+                processTrecFile(file);
             }
         }
     }
@@ -243,8 +239,8 @@ public class ClueWebIndexer {
 
                 while ((line = br.readLine()) != null) {
                     //System.out.println(line);
-                // each line is a warc.gz file
-                    processWarcGzFile(new File(line));
+                    // each line is a file containing documents
+                    processTrecFile(new File(line));
                 }
             }
         }
@@ -254,7 +250,72 @@ public class ClueWebIndexer {
             if (collDir.isDirectory())
                 processDirectory(collDir);
             else
-                processWarcGzFile(collDir);
+                processTrecFile(collDir);
+        }
+
+        indexWriter.close();
+
+        System.out.println("Indexing ends\n"+docIndexedCounter + " files indexed");
+    }
+
+    public void indexFromTarArchive() throws IOException, Exception {
+
+        if (indexWriter == null ) {
+            System.err.println("Index already exists at " + indexFile.getName() + ". Skipping...");
+            return;
+        }
+
+        System.out.println("Indexing started");
+
+        int bulkFileReadSize = Integer.parseInt(prop.getProperty("bulkFileReadSize", "10")); // number of files to extract from the tar
+        int fileCounter = 0; // number of files from archive, to index at a time
+        tempDestFile.mkdir();
+        TarArchiveInputStream tarIn = null;
+
+        tarIn = new TarArchiveInputStream(new GzipCompressorInputStream(new BufferedInputStream(new FileInputStream(tarFile))));
+
+        TarArchiveEntry tarEntry = tarIn.getNextTarEntry();
+        // tarIn is a TarArchiveInputStream
+        while (tarEntry != null) {// create a file with the same name as the tarEntry
+
+            if(!tarEntry.isDirectory())
+            {
+                //System.out.println("Processing: " + tarEntry.getName());
+                File destPath = new File(tempDestFile, tarEntry.getName().replaceAll("/", "-"));
+                destPath.createNewFile();
+                //byte [] btoRead = new byte[(int)tarEntry.getSize()];
+                byte [] btoRead = new byte[1024];
+                //FileInputStream fin 
+                //  = new FileInputStream(destPath.getCanonicalPath());
+                BufferedOutputStream bout = 
+                    new BufferedOutputStream(new FileOutputStream(destPath));
+                int len = 0;
+
+                while((len = tarIn.read(btoRead)) != -1)
+                {
+                    bout.write(btoRead, 0, len);
+                }
+
+                bout.close();
+                btoRead = null;
+
+                if(fileCounter >= bulkFileReadSize) {
+                    processDirectory(tempDestFile);
+                    FileUtils.deleteDirectory(tempDestFile);
+                    tempDestFile.mkdir();
+                    fileCounter = 0;
+                }
+                else
+                    fileCounter ++;
+            }
+            tarEntry = tarIn.getNextTarEntry();
+
+        }
+        tarIn.close();
+
+        if(fileCounter > 0) {
+            processDirectory(tempDestFile);
+            FileUtils.deleteDirectory(tempDestFile);
         }
 
         indexWriter.close();
@@ -265,28 +326,29 @@ public class ClueWebIndexer {
 
     public static void main(String[] args) throws Exception {
 
-        ClueWebIndexer collIndexer;
+        TrecDocIndexer collIndexer;
 
-        String usage = "Usage: java ClueWebIndexer <init.properties>\n"
+        String usage = "Usage: java Wt10gIndexer <init.properties>\n"
         + "Properties file must contain:\n"
-        + "1. collSpec = path of the spec file containing the collection IN .gz format\n"
+        + "1. collSpec = path of the spec file containing the collection spec\n"
         + "2. indexPath = dir. path in which the index will be stored\n"
         + "3. stopFile = path of the stopword list file\n"
         + "4. [OPTIONAL] dumpPath = path of the file to dump the content\n"
         + "5. [OPTIONAL] toStore = YES / NO (default)\n"
-        + "6. [OPTIONAL] storeTermVector = NO/YES(default)/"
+        + "6. [OPTIONAL] storeTermVector==NO/YES(default)/"
             + "WITH_POSITIONS/WITH_OFFSETS/WITH_POSITIONS_OFFSETS";
 
+        // for debuging purpose
         /*
         args = new String[1];
-        args[0] = "/home/dwaipayan/Dropbox/programs/Wt10g_processing/WebData/clueweb-indexer2.properties";
+        args[0] = "build/classes/webdoc-indexer.properties";
         //*/
         if(args.length == 0) {
             System.out.println(usage);
             System.exit(1);
         }
 
-        collIndexer = new ClueWebIndexer(args[0]);
+        collIndexer = new TrecDocIndexer(args[0]);
 
         if(collIndexer.boolIndexExists == false) {
             collIndexer.createIndex();

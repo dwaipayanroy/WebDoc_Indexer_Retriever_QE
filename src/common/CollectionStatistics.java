@@ -77,6 +77,11 @@ public class CollectionStatistics {
         perTermStat = new HashMap<>();
     }
 
+    public CollectionStatistics(String indexPath) throws IOException {
+        indexReader = DirectoryReader.open(FSDirectory.open(new File(indexPath).toPath()));
+        perTermStat = new HashMap<>();
+    }
+
     /**
      * Default constructor.
      */
@@ -140,6 +145,33 @@ public class CollectionStatistics {
         uniqTermCount = perTermStat.size();
 
         System.out.println("Collection statistics built");
+        System.out.println("Unique terms: " + uniqTermCount);
+    }
+
+    public void setUniqueTermCount() throws IOException {
+
+        docCount = indexReader.maxDoc();      // total number of documents in the index
+
+        Fields fields = MultiFields.getFields(indexReader);
+        Terms terms = fields.terms(field);
+        if(null == terms) {
+            System.err.println("Field: "+field);
+            System.err.println("Error buildCollectionStat(): terms Null found");
+        }
+        vocSize = terms.getSumTotalTermFreq();  // total number of terms in the index in that field
+        vocSize = getVocabularySize(indexReader, field);
+        TermsEnum iterator = terms.iterator();
+        BytesRef byteRef = null;
+
+        int count = 0;
+        while((byteRef = iterator.next()) != null) {
+        //* for each word in the collection
+            String t = new String(byteRef.bytes, byteRef.offset, byteRef.length);
+            count++;
+        }
+        uniqTermCount = count;
+
+        System.out.println("Unique terms: " + uniqTermCount);
     }
 
     public double getIdf(String term, IndexReader indexReader, String fieldName) throws IOException {
@@ -244,7 +276,7 @@ public class CollectionStatistics {
     }
 
     /**
-     * Prints all the document ids with 1) full-length and 2)clean-length.
+     * Prints all the document ids with 1) full-length and 2) clean-length.
      * @throws IOException 
      */
     public void allDocLength() throws IOException {
@@ -255,45 +287,47 @@ public class CollectionStatistics {
 
             System.out.print((i+1) + " " + docId + " ");
 
-            int docSize;
+            int fullLen, cleanLen;
             TermsEnum iterator;
             BytesRef byteRef;
+
+            // Full length calculation
             // Term vector for this document and field, or null if term vectors were not indexed
             Terms terms = indexReader.getTermVector(i, FIELD_FULL_BOW);
             if(null == terms) {
-                docSize = 0;
+                fullLen = 0;
             }
 
             else {
                 iterator = terms.iterator();
                 byteRef = null;
 
-                docSize = 0;
+                fullLen = 0;
                 while((byteRef = iterator.next()) != null) {
                 //* for each word in the document
                     long termFreq = iterator.totalTermFreq();    // tf of 't'
-                    docSize += termFreq;
+                    fullLen += termFreq;
                 }
             }
-            System.out.print(docSize + " ");
 
+            // Clean length calculation
             // Term vector for this document and field, or null if term vectors were not indexed
             terms = indexReader.getTermVector(i, FIELD_BOW);
             if(null == terms) {
-                docSize = 0;
+                cleanLen = 0;
             }
             else {
                 iterator = terms.iterator();
                 byteRef = null;
 
-                docSize = 0;
+                cleanLen = 0;
                 while((byteRef = iterator.next()) != null) {
                 //* for each word in the document
                     long termFreq = iterator.totalTermFreq();    // tf of 't'
-                    docSize += termFreq;
+                    cleanLen += termFreq;
                 }
             }
-            System.out.println(docSize);
+            System.out.println(fullLen + " " + cleanLen);
         }
 
 
@@ -302,15 +336,37 @@ public class CollectionStatistics {
     public static void main(String[] args) throws IOException {
 
         String indexPath;
-        if (args.length != 1) {
-            System.out.println("Usage: java common.CollectionStatistics <index-path>");
+        String field;
+        CollectionStatistics cs;
+
+        if (args.length < 2) {
+            System.out.println("Usage: java common.CollectionStatistics <index-path> [-d (to compute all doc.length)] "
+                + "[-t <field-name> (to get the unique term count in field-name)]");
             System.exit(0);
         }
         indexPath = args[0];
-//        indexPath = "/store/collections/indexed/wt10g-2field.index";
-        String field = "content";
 
-        CollectionStatistics cs = new CollectionStatistics(indexPath, field);
+        for(int i=1; i<args.length; i++) {
+            String ch = args[i];
+            switch(ch) {
+                case "-d":
+                    System.out.println("Computing all the document length");
+                    cs = new CollectionStatistics(indexPath);
+                    cs.allDocLength();
+                    break;
+                case "-t":
+                    field = args[++i];
+                    System.out.println("Computing unique term count in field: " + field);
+                    cs = new CollectionStatistics(indexPath, field);
+                    cs.setUniqueTermCount();
+                    break;
+                default:
+                    cs = new CollectionStatistics();
+                    break;
+            }
+        }
+
+        
 
 //        cs.buildCollectionStat();
         //cs.showCollectionStat();
@@ -320,7 +376,7 @@ public class CollectionStatistics {
 //        DocumentVector dv = new DocumentVector();
 //        dv = dv.getDocumentVector(1, cs);
 //        dv.printDocumentVector();
-        cs.allDocLength();
+//        
     }
 }
 

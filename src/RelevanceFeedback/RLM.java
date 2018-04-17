@@ -319,11 +319,11 @@ public class RLM {
         // hashmap_PwGivenR has all terms of PRDs along with their probabilities 
 
         /*
-        // +++ Insearting the idf factor
+        // +++ Inserting the idf factor
         for (Map.Entry<String, WordProbability> entrySet : hashmap_PwGivenR.entrySet()) {
             String key = entrySet.getKey();
             WordProbability value = entrySet.getValue();
-            value.p_w_given_R *= feedbackTermStats.get(key).getIDF();
+            value.p_w_given_R *= Math.log(docCount/feedbackTermStats.get(key).getDF()+1);
             hashmap_PwGivenR.put(key, value);
         }
         hashmap_PwGivenR = sortByValues(hashmap_PwGivenR);

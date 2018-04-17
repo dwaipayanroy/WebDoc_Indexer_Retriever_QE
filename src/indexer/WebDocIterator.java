@@ -183,15 +183,18 @@ public class WebDocIterator extends DocumentProcessor implements Iterator<Docume
 
             if (doc_no != null && !doc_no.isEmpty()){
             // a document content is read; need to process the Document.
-                doc = processDocument();
+//                doc = processDocument();
+                doc = processDocumentUsingJSoup();
 
+                /*
                 if(null != dumpPath) {
-    
+
                     FileWriter fw = new FileWriter(dumpPath, true);
                     BufferedWriter bw = new BufferedWriter(fw);
                     bw.write(cleanContent.replaceAll("\\w*\\d\\w*", "")+"\n");
                     bw.close();
                 }
+                //*/
             }
             else
                 doc = null;

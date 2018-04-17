@@ -28,7 +28,6 @@ import org.apache.lucene.search.similarities.BM25Similarity;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.similarities.LMDirichletSimilarity;
 import org.apache.lucene.search.similarities.LMJelinekMercerSimilarity;
-import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import common.EnglishAnalyzerWithSmartStopword;
@@ -59,8 +58,15 @@ public class DivergenceTrfPrf {
     File            indexFile;          // place where the index is stored
     Analyzer        analyzer;           // the analyzer
     boolean         boolIndexExists;    // boolean flag to indicate whether the index exists or not
-    String          fieldToSearch;      // the field in the index to be searched
-    String          fieldForFeedback;   // field, to be used for feedback
+
+    // for TRF
+    String          fieldToSearchTRF;      // the field in the index to be searched
+    String          fieldForFeedbackTRF;   // field, to be used for feedback
+
+    // for PRF
+    String          fieldToSearchPRF;      // the field in the index to be searched
+    String          fieldForFeedbackPRF;   // field, to be used for feedback
+
     TRECQueryParser trecQueryparser;
     int             simFuncChoice;
     float           param1, param2;
@@ -107,10 +113,17 @@ public class DivergenceTrfPrf {
             boolIndexExists = false;
             System.exit(1);
         }
-        fieldToSearch = prop.getProperty("fieldToSearch", FIELD_FULL_BOW);
-        fieldForFeedback = prop.getProperty("fieldForFeedback", FIELD_BOW);
-        System.out.println("Searching field for retrieval: " + fieldToSearch);
-        System.out.println("Field for Feedback: " + fieldForFeedback);
+        // for TRF
+        fieldToSearchTRF = prop.getProperty("fieldToSearchTRF", FIELD_FULL_BOW);
+        fieldForFeedbackTRF = prop.getProperty("fieldForFeedbackTRF", FIELD_BOW);
+        System.out.println("TRF Searching field for retrieval: " + fieldToSearchTRF);
+        System.out.println("TRF Field for Feedback: " + fieldForFeedbackTRF);
+
+        // for PRF
+        fieldToSearchPRF = prop.getProperty("fieldToSearchPRF", FIELD_FULL_BOW);
+        fieldForFeedbackPRF = prop.getProperty("fieldForFeedbackPRF", FIELD_BOW);
+        System.out.println("PRF Searching field for retrieval: " + fieldToSearchPRF);
+        System.out.println("PRF Field for Feedback: " + fieldForFeedbackPRF);
         /* index path set */
 
         simFuncChoice = Integer.parseInt(prop.getProperty("similarityFunction"));
@@ -132,7 +145,7 @@ public class DivergenceTrfPrf {
         /* query path set */
 
         /* constructing the query */
-        trecQueryparser = new TRECQueryParser(queryPath, analyzer, fieldToSearch);
+        trecQueryparser = new TRECQueryParser(queryPath, analyzer, fieldToSearchTRF);
         queries = constructQueries();
         /* constructed the query */
 
@@ -161,9 +174,9 @@ public class DivergenceTrfPrf {
             mixingLambda = param1;
 
         /* setting res path */
-        setRunName_ResFileName();
-        resFileWriter = new FileWriter(resPath);
-        System.out.println("Result will be stored in: "+resPath);
+//        setRunName_ResFileName();
+//        resFileWriter = new FileWriter(resPath);
+//        System.out.println("Result will be stored in: "+resPath);
 
         /* res path set */
         numHits = Integer.parseInt(prop.getProperty("numHits","1000"));
@@ -205,25 +218,6 @@ public class DivergenceTrfPrf {
     } // ends setSimilarityFunction()
 
     /**
-     * Sets runName and resPath variables depending on similarity functions.
-     */
-    private void setRunName_ResFileName() {
-
-        Similarity s = indexSearcher.getSimilarity(true);
-        runName = s.toString()+"-D"+numFeedbackDocs+"-T"+numFeedbackTerms;
-        runName += "-rm3-"+Float.parseFloat(prop.getProperty("rm3.queryMix", "0.98"));
-        runName += "-" + fieldToSearch + "-" + fieldForFeedback;
-        runName = runName.replace(" ", "").replace("(", "").replace(")", "").replace("00000", "");
-        if(Boolean.parseBoolean(prop.getProperty("rm3.rerank")) == true)
-            runName += "-rerank";
-        if(null == prop.getProperty("resPath"))
-            resPath = "/home/dwaipayan/";
-        else
-            resPath = prop.getProperty("resPath");
-        resPath = resPath+queryFile.getName()+"-"+runName + ".res";
-    } // ends setRunName_ResFileName()
-
-    /**
      * Parses the query from the file and makes a List<TRECQuery> 
      *  containing all the queries (RAW query read)
      * @return A list with the all the queries
@@ -250,7 +244,7 @@ public class DivergenceTrfPrf {
             collector = TopScoreDocCollector.create(numHits);
             Query luceneQuery = trecQueryparser.getAnalyzedQuery(query);
 
-            System.out.println(query.qid+": Initial query: " + luceneQuery.toString(fieldToSearch));
+            System.out.println(query.qid+": Initial query: " + luceneQuery.toString(fieldToSearchTRF));
 
             // +++ TRF
             System.out.println("TRF from qrel");
@@ -261,14 +255,14 @@ public class DivergenceTrfPrf {
             }
             numTrueRelDoc = trfTopDocs.scoreDocs.length;
 
-            rlm.setFeedbackStats(trfTopDocs, luceneQuery.toString(fieldToSearch).split(" "), this, true);
+            rlm.setFeedbackStats(trfTopDocs, luceneQuery.toString(fieldToSearchTRF).split(" "), this, true, fieldForFeedbackTRF);
             /**
              * HashMap of P(w|R) for 'numFeedbackTerms' terms with top P(w|R) among each w in R,
              * keyed by the term with P(w|R) as the value.
              */
             HashMap<String, WordProbability> hashmap_TruePwGivenR;
             //hashmap_PwGivenR = rlm.RM1(query, topDocs);
-            hashmap_TruePwGivenR = rlm.RM3(query, trfTopDocs);
+            hashmap_TruePwGivenR = rlm.RM3(query, trfTopDocs, fieldForFeedbackTRF);
             // --- TRF
 
             // +++ PRF
@@ -277,14 +271,14 @@ public class DivergenceTrfPrf {
             topDocs = collector.topDocs();
             // --- PRF
 
-            rlm.setFeedbackStats(topDocs, luceneQuery.toString(fieldToSearch).split(" "), this, false);
+            rlm.setFeedbackStats(topDocs, luceneQuery.toString(fieldToSearchPRF).split(" "), this, false, fieldForFeedbackPRF);
             /**
              * HashMap of P(w|R) for 'numFeedbackTerms' terms with top P(w|R) among each w in R,
              * keyed by the term with P(w|R) as the value.
              */
             HashMap<String, WordProbability> hashmap_PwGivenR;
             //hashmap_PwGivenR = rlm.RM1(query, topDocs);
-            hashmap_PwGivenR = rlm.RM3(query, topDocs);
+            hashmap_PwGivenR = rlm.RM3(query, topDocs, fieldForFeedbackPRF);
 
             // +++ Now compute the JS-Div(hashmap_TruePwGivenR, hashmap_PwGivenR)
             double score = 0;
